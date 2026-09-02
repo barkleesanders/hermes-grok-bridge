@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "hermes-grok-bridge": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server/index.mjs"],
+      "cwd": "${PLUGIN_ROOT}",
+      "env": {
+        "GROK_WAKE_URL": "${GROK_WAKE_URL}",
+        "GROK_WAKE_TOKEN": "${GROK_WAKE_TOKEN}",
+        "GROK_DEFAULT_AGENT_ID": "${GROK_DEFAULT_AGENT_ID}",
+        "HERMES_WEBHOOK_BASE": "${HERMES_WEBHOOK_BASE}",
+        "HERMES_WEBHOOK_NAME": "${HERMES_WEBHOOK_NAME}",
+        "HERMES_WEBHOOK_SECRET": "${HERMES_WEBHOOK_SECRET}",
+        "HERMES_CLI": "${HERMES_CLI}",
+        "HERMES_OUTBOUND_EVENTS": "${HERMES_OUTBOUND_EVENTS}",
+        "HERMES_OUTBOUND_COS_RATE": "${HERMES_OUTBOUND_COS_RATE}"
+      }
+    }
+  }
+}
