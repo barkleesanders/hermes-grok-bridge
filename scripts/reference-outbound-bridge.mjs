@@ -81,17 +81,22 @@ async function postWake(hermesEventId, reason) {
     headers.Authorization = `Bearer ${token}`;
     headers["X-Automation-Key"] = token;
   }
+  const wakeBody = reason ? `[hermes-grok-bridge]\n${reason}` : "";
+  if (!wakeBody) {
+    return { status: "skipped", error: "empty wake refused", at: new Date().toISOString(), hermesEventId, reason };
+  }
+  headers["Content-Type"] = "text/plain; charset=utf-8";
   try {
-    let res = await fetch(url, { method: "POST", headers, body: "{}", signal: AbortSignal.timeout(8000) });
+    let res = await fetch(url, { method: "POST", headers, body: wakeBody, signal: AbortSignal.timeout(8000) });
     if (res.status === 401 && token) {
       res = await fetch(url, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "text/plain; charset=utf-8",
           "X-Webhook-Key": token,
           "User-Agent": "hermes-grok-bridge/0.1.0-ref",
         },
-        body: "{}",
+        body: wakeBody,
         signal: AbortSignal.timeout(8000),
       });
     }
@@ -124,10 +129,16 @@ const server = http.createServer(async (req, res) => {
     }
     const event = normalize(raw, req.headers);
     let delivery;
+    const rawText =
+      (typeof event.raw?.text === "string" && event.raw.text.trim()) ||
+      (typeof event.raw?.message === "string" && event.raw.message.trim()) ||
+      "";
     if (!allowedKinds().includes(event.kind)) {
       delivery = { status: "skipped", at: new Date().toISOString(), error: `kind ${event.kind}` };
+    } else if (!rawText) {
+      delivery = { status: "skipped", at: new Date().toISOString(), error: "empty wake refused" };
     } else {
-      delivery = await postWake(event.id, `hermes:${event.kind}`);
+      delivery = await postWake(event.id, rawText);
     }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ event, delivery }));

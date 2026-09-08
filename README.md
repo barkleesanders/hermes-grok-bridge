@@ -18,7 +18,7 @@ Set env for the MCP server (Cursor mcp / shell profile). Then reload local plugi
 | Tool | Purpose |
 |------|---------|
 | `normalize_hermes_event` | Raw outbound JSON (+ headers) → HermesEvent |
-| `post_grok_wake` | POST `{}` (or body) to `GROK_WAKE_URL` |
+| `post_grok_wake` | POST contentful body (or `reason` as text/plain) to `GROK_WAKE_URL`. Empty `{}` is skipped. |
 | `ingest_hermes_event` | Normalize + wake if kind allowed, else skipped |
 | `post_hermes_inbound` | POST to Hermes webhook base |
 | `hermes_webhook_list` | `hermes webhook list` |
@@ -29,7 +29,7 @@ Set env for the MCP server (Cursor mcp / shell profile). Then reload local plugi
 ## Domain types
 
 - **HermesEvent** `{ id, kind, sessionId?, profile?, toolName?, deliveryId?, timestamp?, cwd?, extra?, raw }`
-- **GrokWake** `{ targetAgentId?, reason?, hermesEventId?, body }` (`body` default `{}`)
+- **GrokWake** `{ targetAgentId?, reason?, hermesEventId?, body }` — `body` must have keys or `reason` must be set; empty `{}` is skipped, never posted.
 - **Subscription** `{ name, platform?, events?, deliver?, script?, secretEnv?, deliverOnly? }`
 - **BridgeDelivery** `{ status: sent\|failed\|skipped, httpStatus?, error?, at, mode? }`
 

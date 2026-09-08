@@ -108,9 +108,23 @@ async function postGrokWake(args = {}) {
   const wait = lastWakeAt + gap - Date.now();
   if (wait > 0) await sleep(wait);
 
-  const body =
-    args.body != null && typeof args.body === "object" ? args.body : {};
-  const bodyStr = JSON.stringify(body);
+  const obj = args.body != null && typeof args.body === "object" ? args.body : null;
+  const hasKeys = !!(obj && Object.keys(obj).length > 0);
+  const reason = args.reason ? String(args.reason) : "";
+  if (!hasKeys && !reason) {
+    return {
+      status: "skipped",
+      error: "empty wake refused; pass contentful body or reason",
+      at,
+      mode: "primary",
+      ...(args.targetAgentId ? { targetAgentId: args.targetAgentId } : {}),
+      ...(args.hermesEventId ? { hermesEventId: args.hermesEventId } : {}),
+    };
+  }
+  const bodyStr = hasKeys
+    ? JSON.stringify(obj)
+    : `[hermes-grok-bridge]\n${reason}`;
+  const contentType = hasKeys ? "application/json" : "text/plain; charset=utf-8";
 
   async function attempt(mode, headers) {
     const ac = new AbortController();
@@ -136,7 +150,7 @@ async function postGrokWake(args = {}) {
   }
 
   const primaryHeaders = {
-    "Content-Type": "application/json",
+    "Content-Type": contentType,
     "User-Agent": UA,
   };
   if (token) {
@@ -147,7 +161,7 @@ async function postGrokWake(args = {}) {
   let result = await attempt("primary", primaryHeaders);
   if (result.status === 401 && token) {
     result = await attempt("webhook-key", {
-      "Content-Type": "application/json",
+      "Content-Type": contentType,
       "X-Webhook-Key": token,
       "User-Agent": UA,
     });
@@ -183,10 +197,23 @@ async function ingestHermesEvent(args = {}) {
       },
     };
   }
+  const wakeBody = args.wakeBody;
+  const contentful =
+    wakeBody != null && typeof wakeBody === "object" && Object.keys(wakeBody).length > 0;
+  if (!contentful) {
+    return {
+      event,
+      delivery: {
+        status: "skipped",
+        at: new Date().toISOString(),
+        error: "empty wakeBody refused",
+      },
+    };
+  }
   const delivery = await postGrokWake({
     hermesEventId: event.id,
     reason: `hermes:${event.kind}`,
-    body: args.wakeBody,
+    body: wakeBody,
     targetAgentId: args.targetAgentId || env("GROK_DEFAULT_AGENT_ID") || undefined,
   });
   return { event, delivery };
@@ -322,11 +349,11 @@ const TOOLS = [
   {
     name: "post_grok_wake",
     description:
-      "POST wake body (default {}) to GROK_WAKE_URL. Bearer+X-Automation-Key; on 401 retry X-Webhook-Key. Rate-limited; fail-open.",
+      "POST a contentful wake to GROK_WAKE_URL. Empty {} is refused (skipped) unless body has keys or reason is set (posted as text/plain). Bearer+X-Automation-Key; on 401 retry X-Webhook-Key. Rate-limited; fail-open.",
     inputSchema: {
       type: "object",
       properties: {
-        body: { type: "object", description: "Wake JSON body; default {}" },
+        body: { type: "object", description: "Wake JSON body. Empty {} is skipped; pass keys or reason." },
         reason: { type: "string" },
         targetAgentId: { type: "string" },
         hermesEventId: { type: "string" },
