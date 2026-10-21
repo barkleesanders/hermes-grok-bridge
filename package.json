@@ -9,7 +9,7 @@
   "scripts": {
     "lint": "biome check .",
     "test": "node --test tests/wake.test.mjs",
-    "check": "npm run lint && node --check server/index.mjs && node --check scripts/reference-outbound-bridge.mjs && npm test && node scripts/mcp-smoke.mjs && npm audit --audit-level=low"
+    "check": "npm run lint && node --check server/index.mjs && node --check scripts/reference-outbound-bridge.mjs && npm test && node scripts/mcp-smoke.mjs && npm audit --ignore-scripts --audit-level=low"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15"
