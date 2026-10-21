@@ -20,7 +20,7 @@ description: >-
 - **HermesEvent** — `{ id, kind, sessionId?, profile?, toolName?, deliveryId?, timestamp?, cwd?, extra?, raw }`
   - `kind` from `X-Hermes-Event` / `hook_event_name`
   - Phase 1 outbound kinds (configurable via `HERMES_OUTBOUND_EVENTS`): `on_session_end`, `on_session_finalize` (defaults)
-- **GrokWake** — `{ targetAgentId?, reason?, hermesEventId?, body }` with `body` default `{}`
+- **GrokWake** — `{ targetAgentId?, reason?, hermesEventId?, body }`. Provide a nonempty JSON object or a nonblank reason. Empty bodies and arrays are skipped. Event ingestion requires a nonempty `wakeBody` object.
 - **Subscription** — `{ name, platform?, events?, deliver?, script?, secretEnv?, deliverOnly? }`
 - **BridgeDelivery** — `{ status: sent|failed|skipped, httpStatus?, error?, at, mode? }`
 

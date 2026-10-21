@@ -18,7 +18,7 @@ Set env for the MCP server (Cursor mcp / shell profile). Then reload local plugi
 | Tool | Purpose |
 |------|---------|
 | `normalize_hermes_event` | Raw outbound JSON (+ headers) → HermesEvent |
-| `post_grok_wake` | POST `{}` (or body) to `GROK_WAKE_URL` |
+| `post_grok_wake` | POST contentful body (or `reason` as text/plain) to `GROK_WAKE_URL`. Empty `{}` is skipped. |
 | `ingest_hermes_event` | Normalize + wake if kind allowed, else skipped |
 | `post_hermes_inbound` | POST to Hermes webhook base |
 | `hermes_webhook_list` | `hermes webhook list` |
@@ -29,7 +29,7 @@ Set env for the MCP server (Cursor mcp / shell profile). Then reload local plugi
 ## Domain types
 
 - **HermesEvent** `{ id, kind, sessionId?, profile?, toolName?, deliveryId?, timestamp?, cwd?, extra?, raw }`
-- **GrokWake** `{ targetAgentId?, reason?, hermesEventId?, body }` (`body` default `{}`)
+- **GrokWake** `{ targetAgentId?, reason?, hermesEventId?, body }` — `body` must be a nonempty object or `reason` must contain nonwhitespace text. Empty `{}` and arrays are skipped. Event ingestion requires a nonempty `wakeBody` object.
 - **Subscription** `{ name, platform?, events?, deliver?, script?, secretEnv?, deliverOnly? }`
 - **BridgeDelivery** `{ status: sent\|failed\|skipped, httpStatus?, error?, at, mode? }`
 
@@ -64,7 +64,11 @@ Wake auth: primary `Authorization: Bearer` + `X-Automation-Key`; on HTTP 401 ret
 
 ## Prove
 
-See `PROVE.md`. Local MCP smoke and Mini live wake/CLI smoke completed 2026-09-02.
+Run `npm ci --ignore-scripts` then `npm run check` on Node 22 or newer. The check runs Biome, syntax checks, local HTTP/MCP regression tests, a read-only MCP smoke, and the dependency audit. CI runs the same command on Node 22 and 24.
+
+The MCP server supports standard newline-delimited JSON-RPC and legacy Content-Length framing. Regression tests use local receivers and synthetic credentials. The smoke only sends a real wake when explicitly invoked with `node scripts/mcp-smoke.mjs --live-wake` and `GROK_WAKE_URL` is set.
+
+See `PROVE.md` for historical environment-specific evidence; historical skips are not current release verification.
 
 ## License
 

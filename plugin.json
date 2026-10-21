@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hermes-grok-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bridge Hermes outbound session hooks and inbound webhooks to Grok Bot wakes. Additive to host LaunchAgent/queue glue; secrets via env placeholders only.",
   "author": { "name": "Barklee Sanders" },
   "keywords": ["hermes", "grok", "webhook", "mcp", "bridge"],
