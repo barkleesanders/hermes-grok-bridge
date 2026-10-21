@@ -47,12 +47,8 @@ function headerGet(headers, name) {
 function normalize(raw, headers) {
   const body = raw && typeof raw === "object" ? raw : {};
   const kind =
-    headerGet(headers, "x-hermes-event") ||
-    body.hook_event_name ||
-    body.kind ||
-    "unknown";
-  const deliveryId =
-    headerGet(headers, "x-hermes-delivery") || body.delivery_id;
+    headerGet(headers, "x-hermes-event") || body.hook_event_name || body.kind || "unknown";
+  const deliveryId = headerGet(headers, "x-hermes-delivery") || body.delivery_id;
   return {
     id: String(deliveryId || body.id || crypto.randomUUID()),
     kind: String(kind),
@@ -69,7 +65,8 @@ function normalize(raw, headers) {
 async function postWake(hermesEventId, reason) {
   const url = env("GROK_WAKE_URL");
   const token = env("GROK_WAKE_TOKEN");
-  if (!url) return { status: "failed", error: "GROK_WAKE_URL not set", at: new Date().toISOString() };
+  if (!url)
+    return { status: "failed", error: "GROK_WAKE_URL not set", at: new Date().toISOString() };
   const gap = Number(env("HERMES_OUTBOUND_COS_RATE", "5")) * 1000;
   const wait = lastWakeAt + gap - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -83,11 +80,22 @@ async function postWake(hermesEventId, reason) {
   }
   const wakeBody = reason ? `[hermes-grok-bridge]\n${reason}` : "";
   if (!wakeBody) {
-    return { status: "skipped", error: "empty wake refused", at: new Date().toISOString(), hermesEventId, reason };
+    return {
+      status: "skipped",
+      error: "empty wake refused",
+      at: new Date().toISOString(),
+      hermesEventId,
+      reason,
+    };
   }
   headers["Content-Type"] = "text/plain; charset=utf-8";
   try {
-    let res = await fetch(url, { method: "POST", headers, body: wakeBody, signal: AbortSignal.timeout(8000) });
+    let res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: wakeBody,
+      signal: AbortSignal.timeout(8000),
+    });
     if (res.status === 401 && token) {
       res = await fetch(url, {
         method: "POST",
@@ -149,5 +157,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  console.error(`reference-outbound-bridge listening 127.0.0.1:${port} (host-local LaunchAgent stays on Mini)`);
+  console.error(
+    `reference-outbound-bridge listening 127.0.0.1:${port} (host-local LaunchAgent stays on Mini)`,
+  );
 });

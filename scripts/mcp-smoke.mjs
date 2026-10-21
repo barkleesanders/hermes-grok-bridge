@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
  * MCP stdio smoke: initialize → tools/list → tools/call normalize_hermes_event
- * Optionally post_grok_wake only if GROK_WAKE_URL is set.
+ * Only posts a live wake with explicit --live-wake and GROK_WAKE_URL.
  */
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const serverPath = path.join(root, "server", "index.mjs");
@@ -83,7 +83,12 @@ const sample = {
   extra: { session_id: "sess_redacted", completed: true, failed: false },
 };
 
-const results = { initialize: null, toolsList: null, normalize: null, postWake: "SKIP (GROK_WAKE_URL unset)" };
+const results = {
+  initialize: null,
+  toolsList: null,
+  normalize: null,
+  postWake: "SKIP (live wake requires --live-wake and GROK_WAKE_URL)",
+};
 
 try {
   const init = await request("initialize", {
@@ -92,9 +97,7 @@ try {
     clientInfo: { name: "mcp-smoke", version: "0.0.1" },
   });
   results.initialize = init.result?.serverInfo || init;
-  child.stdin.write(
-    frame({ jsonrpc: "2.0", method: "notifications/initialized" })
-  );
+  child.stdin.write(frame({ jsonrpc: "2.0", method: "notifications/initialized" }));
 
   const list = await request("tools/list", {});
   const names = (list.result?.tools || []).map((t) => t.name);
@@ -107,7 +110,7 @@ try {
   const text = call.result?.content?.[0]?.text;
   results.normalize = text ? JSON.parse(text) : call.result?.structuredContent || call;
 
-  if (process.env.GROK_WAKE_URL) {
+  if (process.argv.includes("--live-wake") && process.env.GROK_WAKE_URL) {
     const wake = await request("tools/call", {
       name: "post_grok_wake",
       arguments: { reason: "smoke-test" },
@@ -120,7 +123,9 @@ try {
   child.kill();
   process.exit(0);
 } catch (e) {
-  console.error(JSON.stringify({ ok: false, error: String(e?.message || e), results, stderr }, null, 2));
+  console.error(
+    JSON.stringify({ ok: false, error: String(e?.message || e), results, stderr }, null, 2),
+  );
   child.kill();
   process.exit(1);
 }

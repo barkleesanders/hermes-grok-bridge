@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * hermes-grok-bridge — zero-dep stdio MCP server
- * Content-Length framed JSON-RPC over stdin/stdout.
+ * Newline-delimited MCP stdio, with legacy Content-Length compatibility.
  * Domain: HermesEvent, GrokWake, Subscription, BridgeDelivery
  */
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 const UA = `hermes-grok-bridge/${VERSION}`;
 
 const DEFAULT_OUTBOUND = "on_session_end,on_session_finalize";
@@ -51,14 +51,8 @@ function headerGet(headers, name) {
 function normalizeHermesEvent(raw, headers) {
   const body = raw && typeof raw === "object" ? raw : {};
   const kind =
-    headerGet(headers, "X-Hermes-Event") ||
-    body.hook_event_name ||
-    body.kind ||
-    "unknown";
-  const deliveryId =
-    headerGet(headers, "X-Hermes-Delivery") ||
-    body.delivery_id ||
-    body.deliveryId;
+    headerGet(headers, "X-Hermes-Event") || body.hook_event_name || body.kind || "unknown";
+  const deliveryId = headerGet(headers, "X-Hermes-Delivery") || body.delivery_id || body.deliveryId;
   const id = deliveryId || body.id || randomUUID();
   const sessionId = body.session_id || body.sessionId;
   const profile = body.profile;
@@ -108,9 +102,12 @@ async function postGrokWake(args = {}) {
   const wait = lastWakeAt + gap - Date.now();
   if (wait > 0) await sleep(wait);
 
-  const obj = args.body != null && typeof args.body === "object" ? args.body : null;
+  const obj =
+    args.body != null && typeof args.body === "object" && !Array.isArray(args.body)
+      ? args.body
+      : null;
   const hasKeys = !!(obj && Object.keys(obj).length > 0);
-  const reason = args.reason ? String(args.reason) : "";
+  const reason = typeof args.reason === "string" ? args.reason.trim() : "";
   if (!hasKeys && !reason) {
     return {
       status: "skipped",
@@ -121,9 +118,7 @@ async function postGrokWake(args = {}) {
       ...(args.hermesEventId ? { hermesEventId: args.hermesEventId } : {}),
     };
   }
-  const bodyStr = hasKeys
-    ? JSON.stringify(obj)
-    : `[hermes-grok-bridge]\n${reason}`;
+  const bodyStr = hasKeys ? JSON.stringify(obj) : `[hermes-grok-bridge]\n${reason}`;
   const contentType = hasKeys ? "application/json" : "text/plain; charset=utf-8";
 
   async function attempt(mode, headers) {
@@ -176,8 +171,7 @@ async function postGrokWake(args = {}) {
   };
   if (result.status) delivery.httpStatus = result.status;
   if (result.error) delivery.error = result.error;
-  else if (!result.ok)
-    delivery.error = `HTTP ${result.status || "error"}`;
+  else if (!result.ok) delivery.error = `HTTP ${result.status || "error"}`;
   if (args.reason) delivery.reason = args.reason;
   if (args.targetAgentId) delivery.targetAgentId = args.targetAgentId;
   if (args.hermesEventId) delivery.hermesEventId = args.hermesEventId;
@@ -199,7 +193,10 @@ async function ingestHermesEvent(args = {}) {
   }
   const wakeBody = args.wakeBody;
   const contentful =
-    wakeBody != null && typeof wakeBody === "object" && Object.keys(wakeBody).length > 0;
+    wakeBody != null &&
+    typeof wakeBody === "object" &&
+    !Array.isArray(wakeBody) &&
+    Object.keys(wakeBody).length > 0;
   if (!contentful) {
     return {
       event,
@@ -287,10 +284,7 @@ function runHermes(argv) {
       resolve({
         exitCode: 127,
         stdout,
-        stderr:
-          stderr +
-          (stderr ? "\n" : "") +
-          `hermes CLI not available (${bin}): ${err.message}`,
+        stderr: `${stderr}${stderr ? "\n" : ""}hermes CLI not available (${bin}): ${err.message}`,
       });
     });
     child.on("close", (code) => {
@@ -353,7 +347,10 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        body: { type: "object", description: "Wake JSON body. Empty {} is skipped; pass keys or reason." },
+        body: {
+          type: "object",
+          description: "Wake JSON body. Empty {} is skipped; pass keys or reason.",
+        },
         reason: { type: "string" },
         targetAgentId: { type: "string" },
         hermesEventId: { type: "string" },
@@ -401,10 +398,7 @@ const TOOLS = [
       properties: {
         name: { type: "string" },
         events: {
-          oneOf: [
-            { type: "string" },
-            { type: "array", items: { type: "string" } },
-          ],
+          oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
         },
         prompt: { type: "string" },
         deliver: { type: "string" },
@@ -457,10 +451,12 @@ async function callTool(name, args) {
   }
 }
 
+let newlineTransport = false;
+
 function sendMessage(msg) {
   const json = JSON.stringify(msg);
   const frame = `Content-Length: ${Buffer.byteLength(json, "utf8")}\r\n\r\n${json}`;
-  process.stdout.write(frame);
+  process.stdout.write(newlineTransport ? `${json}\n` : frame);
 }
 
 function makeResult(id, result) {
@@ -472,7 +468,7 @@ function makeError(id, code, message) {
 }
 
 async function handleMessage(msg) {
-  if (!msg || msg.jsonrpc !== "2.0") return;
+  if (msg?.jsonrpc !== "2.0") return;
   const { id, method, params } = msg;
   if (id === undefined || id === null) {
     // notification — ignore
@@ -485,7 +481,7 @@ async function handleMessage(msg) {
           protocolVersion: params?.protocolVersion || "2024-11-05",
           capabilities: { tools: {} },
           serverInfo: { name: "hermes-grok-bridge", version: VERSION },
-        })
+        }),
       );
       return;
     }
@@ -503,14 +499,14 @@ async function handleMessage(msg) {
           makeResult(id, {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
             structuredContent: result,
-          })
+          }),
         );
       } catch (e) {
         sendMessage(
           makeResult(id, {
             content: [{ type: "text", text: String(e?.message || e) }],
             isError: true,
-          })
+          }),
         );
       }
       return;
@@ -525,29 +521,32 @@ async function handleMessage(msg) {
   }
 }
 
-// Content-Length framed reader
+// MCP stdio uses newline-delimited JSON. Preserve legacy framed clients too.
 let buf = Buffer.alloc(0);
 
 process.stdin.on("data", (chunk) => {
   buf = Buffer.concat([buf, chunk]);
   while (true) {
+    const nl = buf.indexOf("\n");
+    if (nl !== -1 && !/^Content-Length:/i.test(buf.subarray(0, nl).toString("utf8"))) {
+      const line = buf.subarray(0, nl).toString("utf8").trim();
+      buf = buf.subarray(nl + 1);
+      newlineTransport = true;
+      if (line) {
+        try {
+          void handleMessage(JSON.parse(line));
+        } catch {
+          /* ignore malformed JSON */
+        }
+      }
+      continue;
+    }
     const headerEnd = buf.indexOf("\r\n\r\n");
     if (headerEnd === -1) break;
     const header = buf.subarray(0, headerEnd).toString("utf8");
     const m = /Content-Length:\s*(\d+)/i.exec(header);
     if (!m) {
-      // try newline-delimited fallback for a single line
-      const nl = buf.indexOf("\n");
-      if (nl === -1) break;
-      const line = buf.subarray(0, nl).toString("utf8").trim();
-      buf = buf.subarray(nl + 1);
-      if (line) {
-        try {
-          void handleMessage(JSON.parse(line));
-        } catch {
-          /* ignore */
-        }
-      }
+      buf = buf.subarray(headerEnd + 4);
       continue;
     }
     const len = parseInt(m[1], 10);
@@ -555,6 +554,7 @@ process.stdin.on("data", (chunk) => {
     if (buf.length < start + len) break;
     const body = buf.subarray(start, start + len).toString("utf8");
     buf = buf.subarray(start + len);
+    newlineTransport = false;
     try {
       void handleMessage(JSON.parse(body));
     } catch {
